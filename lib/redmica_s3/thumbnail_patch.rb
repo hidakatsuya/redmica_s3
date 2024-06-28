@@ -42,21 +42,25 @@ module RedmicaS3
             size_option = "#{size}x#{size}>"
             begin
               tempfile = MiniMagick::Utilities.tempfile(File.extname(source)) do |f| f.write(raw_data) end
-              convert_output =
-                if is_pdf
-                  MiniMagick::Tool::Convert.new do |cmd|
-                    cmd << "#{tempfile.to_path}[0]"
-                    cmd.thumbnail size_option
-                    cmd << 'png:-'
-                  end
-                else
-                  MiniMagick::Tool::Convert.new do |cmd|
-                    cmd << tempfile.to_path
-                    cmd.auto_orient
-                    cmd.thumbnail size_option
-                    cmd << '-'
-                  end
-                end
+
+              # Generate command
+              convert = MiniMagick::Tool::Convert.new
+              if is_pdf
+                convert << "#{tempfile.to_path}[0]"
+                convert.thumbnail size_option
+                convert << 'png:-'
+              else
+                convert << tempfile.to_path
+                convert.auto_orient
+                convert.thumbnail size_option
+                convert << '-'
+              end
+
+              # Execute command
+              convert_output = with_mini_magick_timeout(Redmine::Configuration['thumbnails_generation_timeout'].to_i) do
+                convert.call
+              end
+
               img = MiniMagick::Image.read(convert_output)
 
               img_blob = img.to_blob
@@ -66,6 +70,9 @@ module RedmicaS3
               RedmicaS3::Connection.put(target, File.basename(target), img_blob, img.mime_type,
                 {target_folder: target_folder, digest: new_digest}
               )
+            rescue Timeout::Error
+              Rails.logger.error("Creating thumbnail timed out:\nCommand: #{convert.command.join(' ')}")
+              return nil
             rescue => e
               Rails.logger.error("Creating thumbnail failed (#{e.message}):")
               return nil
@@ -76,6 +83,18 @@ module RedmicaS3
 
           object.reload
           [object.metadata['digest'], object.get.body.read]
+        end
+
+        def with_mini_magick_timeout(timeout_seconds)
+          return yield unless timeout_seconds > 0
+
+          begin
+            original_timeout = MiniMagick.timeout
+            MiniMagick.timeout = timeout_seconds
+            yield
+          ensure
+            MiniMagick.timeout = original_timeout
+          end
         end
       end
     end
