@@ -25,5 +25,5 @@ Redmine::Plugin.register :redmica_s3 do
   Import.__send__(:include, RedmicaS3::ImportPatch)
   AttachmentsController.__send__(:include, RedmicaS3::AttachmentsControllerPatch)
 
-  RedmicaS3::Connection.create_bucket
+  RedmicaS3::Connection.create_bucket unless ENV['REDMICA_S3_SKIP_BUCKET_CREATION'] = '1'
 end
