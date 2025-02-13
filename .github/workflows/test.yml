@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # strategy:
+    #   matrix:
+    #     redmine-branch:
+    #       - 'stable-3.1'
+    #       - 'master'
+    #     ruby-version:
+    #       - '3.3'
+    #       - '3.2'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - run: docker compose up -d --wait
+
+    - run: docker compose exec app bin/rails redmine:plugins:test NAME=redmica_s3
+
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        path: |
+          tmp/screenshots/
